@@ -1,0 +1,16 @@
+# 让 Windows 上的 bat/ps1 保持 CRLF，其余文件统一 LF，避免换行符乱掉
+* text=auto eol=lf
+
+*.bat text eol=crlf
+*.ps1 text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制文件不要做换行转换
+*.jar binary
+*.png binary
+*.jpg binary
+*.webp binary
+*.apk binary
+
+# GitHub 语言统计：把 Android 端也识别为 Java
+*.java linguist-language=Java

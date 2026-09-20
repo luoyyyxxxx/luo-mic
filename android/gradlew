@@ -1,0 +1,55 @@
+#!/usr/bin/env bash
+# luo mic — 安卓端构建脚本（Linux / macOS）
+#
+# 用法：
+#     ./gradlew assembleDebug      编译 debug APK
+#     ./gradlew installDebug       编译并安装到已连接的手机
+#
+# 说明：仓库不附带二进制文件 gradle-wrapper.jar，本脚本会在首次运行时自动
+#       下载官方 Gradle 8.7 发行包并缓存到 ~/.gradle/luomic-gradle/。
+
+set -euo pipefail
+
+APP_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+GRADLE_VER="8.7"
+CACHE_ROOT="${HOME}/.gradle/luomic-gradle"
+GRADLE_HOME="${CACHE_ROOT}/gradle-${GRADLE_VER}"
+GRADLE_BIN="${GRADLE_HOME}/bin/gradle"
+
+fetch_gradle() {
+    echo "[luo mic] 首次运行：准备 Gradle ${GRADLE_VER}（只需一次，约 130MB）"
+    mkdir -p "${CACHE_ROOT}"
+    local zip="${CACHE_ROOT}/gradle-${GRADLE_VER}-bin.zip"
+    if [ ! -f "${zip}" ]; then
+        local urls=(
+            "https://mirrors.cloud.tencent.com/gradle/gradle-${GRADLE_VER}-bin.zip"
+            "https://mirrors.aliyun.com/macports/distfiles/gradle/gradle-${GRADLE_VER}-bin.zip"
+            "https://services.gradle.org/distributions/gradle-${GRADLE_VER}-bin.zip"
+        )
+        local ok=0
+        for u in "${urls[@]}"; do
+            echo "  正在下载 ${u}"
+            if curl -fL --retry 2 -o "${zip}" "${u}"; then ok=1; break; fi
+            echo "  该地址失败，尝试下一个…"
+        done
+        [ "${ok}" = "1" ] || { echo "[错误] Gradle 下载失败，请检查网络"; exit 1; }
+    fi
+    echo "  正在解压…"
+    rm -rf "${CACHE_ROOT}/tmp"
+    mkdir -p "${CACHE_ROOT}/tmp"
+    unzip -q "${zip}" -d "${CACHE_ROOT}/tmp"
+    rm -rf "${GRADLE_HOME}"
+    mv "${CACHE_ROOT}/tmp/gradle-${GRADLE_VER}" "${GRADLE_HOME}"
+    rmdir "${CACHE_ROOT}/tmp" 2>/dev/null || true
+    echo "  Gradle 已就绪：${GRADLE_BIN}"
+}
+
+if [ ! -x "${GRADLE_BIN}" ]; then
+    if ! command -v java >/dev/null 2>&1; then
+        echo "[错误] 找不到 java。请安装 JDK 17+：https://adoptium.net/"
+        exit 1
+    fi
+    fetch_gradle
+fi
+
+exec "${GRADLE_BIN}" -p "${APP_HOME}" "$@"
