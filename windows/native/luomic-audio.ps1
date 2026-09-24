@@ -11,6 +11,7 @@ $script:LuoMicAudioCode = @'
 using System;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
+using System.Threading;
 
 namespace LuoMic
 {
@@ -200,8 +201,8 @@ namespace LuoMic
             deviceFormat = (WaveFormatEx)Marshal.PtrToStructure(fmt, typeof(WaveFormatEx));
             isFloat = deviceFormat.wFormatTag == 3;   // WAVE_FORMAT_IEEE_FLOAT
             channels = deviceFormat.nChannels;
-            if (deviceFormat.wBitsPerSample != 16 && deviceFormat.wBitsPerSample != 32)
-                throw new Exception("设备位深不支持：" + deviceFormat.wBitsPerSample);
+            if ((int)deviceFormat.wBitsPerSample != 16 && (int)deviceFormat.wBitsPerSample != 32)
+                throw new Exception("设备位深不支持：" + (int)deviceFormat.wBitsPerSample);
 
             long dur = 2000000; // 200ms 缓冲（100ns 单位）
             int hr = client.Initialize(0 /*SHARED*/, 0, dur, 0, fmt, IntPtr.Zero);
@@ -238,8 +239,8 @@ namespace LuoMic
 
         private void Loop()
         {
-            int blockFrames = deviceFormat.nSamplesPerSec * 20 / 1000; // 每次写 20ms
-            byte[] silence = new byte[blockFrames * channels * (deviceFormat.wBitsPerSample / 8)];
+            int blockFrames = (int)deviceFormat.nSamplesPerSec * 20 / 1000; // 每次写 20ms
+            byte[] silence = new byte[blockFrames * channels * ((int)deviceFormat.wBitsPerSample / 8)];
             while (running)
             {
                 int padding;
@@ -254,7 +255,7 @@ namespace LuoMic
                 if (!queue.TryDequeue(out pcm))
                 {
                     // 没有数据：写静音，避免爆音
-                    Marshal.Copy(silence, 0, buf, Math.Min(silence.Length, frames * channels * (deviceFormat.wBitsPerSample / 8)));
+                    Marshal.Copy(silence, 0, buf, Math.Min(silence.Length, frames * channels * ((int)deviceFormat.wBitsPerSample / 8)));
                     render.ReleaseBuffer(frames, 0);
                     Interlocked.Increment(ref underruns);
                     System.Threading.Thread.Sleep(FRAME_SLEEP);
@@ -272,11 +273,12 @@ namespace LuoMic
         /// <summary>把 16bit 单声道 PCM 转成设备要求的格式写进缓冲。</summary>
         private void WriteConverted(IntPtr buf, int frames, byte[] pcm)
         {
-            int bytesPerSample = deviceFormat.wBitsPerSample / 8;
+            int bytesPerSample = (int)deviceFormat.wBitsPerSample / 8;
             int outBytes = frames * channels * bytesPerSample;
             byte[] outBuf = new byte[outBytes];
             int srcSamples = pcm.Length / 2;
             int srcRate = SourceRate > 0 ? SourceRate : (int)deviceFormat.nSamplesPerSec;
+            if (srcRate <= 0) srcRate = 48000;
             int devRate = (int)deviceFormat.nSamplesPerSec;
 
             for (int i = 0; i < frames; i++)
@@ -318,31 +320,65 @@ namespace LuoMic
 '@
 
 function Initialize-LuoMicAudio {
-    <# 编译 C# 音频组件。成功返回 $true；失败返回 $false（网络功能不受影响）。 #>
-    try {
-        Add-Type -TypeDefinition $script:LuoMicAudioCode -Language CSharp `
-                 -ReferencedAssemblies 'System.Core' -ErrorAction Stop
-        return $true
-    } catch {
-        Write-Host "音频组件编译失败：$($_.Exception.Message)" -ForegroundColor Red
-        Write-Host "（请安装 .NET Framework 4.x，或使用 Java 版 luo-mic.jar）" -ForegroundColor Yellow
-        return $false
+    <#
+      编译 C# 音频组件。成功返回 $true；失败返回 $false（网络功能不受影响）。
+
+      坑：Add-Type 的 -ReferencedAssemblies 会**覆盖**默认程序集列表，
+      只给 'System.Core' 会导致 System.Collections.Concurrent / System.Runtime.InteropServices
+      都找不到（实测报 CS0234）。所以这里显式给出完整依赖列表，
+      并在缺失时自动回退到不指定引用的默认编译。
+    #>
+    $candidates = @(
+        @('System.dll', 'System.Core.dll'),
+        @('System.Core'),
+        $null
+    )
+    foreach ($refs in $candidates) {
+        try {
+            if ($refs) {
+                Add-Type -TypeDefinition $script:LuoMicAudioCode -Language CSharp `
+                         -ReferencedAssemblies $refs -ErrorAction Stop
+            } else {
+                Add-Type -TypeDefinition $script:LuoMicAudioCode -Language CSharp -ErrorAction Stop
+            }
+            return $true
+        } catch {
+            $lastError = $_.Exception.Message
+        }
     }
+    Write-Host "音频组件编译失败：$lastError" -ForegroundColor Red
+    Write-Host "（网络功能不受影响；想出声请用 Java 版 luo-mic.jar，或安装 .NET Framework 4.x）" -ForegroundColor Yellow
+    return $false
 }
 
 function Get-LuoMicRenderDevices {
-    <# 返回 @( @{Name=...; Id=...} )。没有音频组件时返回空数组。 #>
-    if (-not ('LuoMic.WasapiPlayer' -as [type])) { return @() }
+    <#
+      返回 @( @{Name=...; Id=...} )。没有音频组件、或系统不支持 COM 时返回空数组。
+      注意：必须 try/catch —— 非 Windows 上调用会抛 "COM is not supported"，
+      不接住会直接终止整个程序（实测踩过）。
+    #>
     $out = @()
-    foreach ($d in [LuoMic.WasapiPlayer]::ListRenderDevices()) {
-        $parts = $d.Split('||')
-        $out += @{ Name = $parts[0]; Id = $parts[1] }
+    if (-not ('LuoMic.WasapiPlayer' -as [type])) { return $out }
+    try {
+        foreach ($d in [LuoMic.WasapiPlayer]::ListRenderDevices()) {
+            $parts = $d.Split('||')
+            if ($parts.Length -ge 2) {
+                $out += @{ Name = $parts[0]; Id = $parts[1] }
+            }
+        }
+    } catch {
+        Write-Host ("  枚举音频设备失败：{0}" -f $_.Exception.Message) -ForegroundColor DarkGray
     }
     return $out
 }
 
 function New-LuoMicPlayer {
-    <# 创建播放器；没有音频组件时返回 $null（此时整个程序仍可跑，只是不出声）。 #>
+    <# 创建播放器；没有音频组件或系统不支持时返回 $null（程序仍可跑，只是不出声）。 #>
     if (-not ('LuoMic.WasapiPlayer' -as [type])) { return $null }
-    return New-Object LuoMic.WasapiPlayer
+    try {
+        return New-Object LuoMic.WasapiPlayer
+    } catch {
+        Write-Host ("  创建播放器失败：{0}" -f $_.Exception.Message) -ForegroundColor DarkGray
+        return $null
+    }
 }
