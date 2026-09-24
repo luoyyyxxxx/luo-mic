@@ -29,7 +29,7 @@ set ANDROID_HOME=C:\Users\你的用户名\AppData\Local\Android\Sdk
 gradlew.bat assembleDebug
 ```
 
-产物：`android\app\build\outputs\apk\debug\luo-mic-debug-1.0.0.apk`
+产物：`android\app\build\outputs\apk\debug\luo-mic-debug.apk`
 
 国内网络慢的话，把 `android/settings.gradle.kts` 里两处阿里云镜像的注释打开即可：
 
@@ -43,7 +43,7 @@ gradlew.bat assembleDebug
 ```bat
 gradlew.bat installDebug
 :: 或
-adb install -r app\build\outputs\apk\debug\luo-mic-debug-1.0.0.apk
+adb install -r app\build\outputs\apk\debug\luo-mic-debug.apk
 ```
 
 ### 发布版（可选）
@@ -57,7 +57,7 @@ keyAlias=luomic
 keyPassword=你的密码
 ```
 
-然后 `gradlew.bat assembleRelease`，产物文件名同样是 `luo-mic-release-1.0.0.apk`。
+然后 `gradlew.bat assembleRelease`，产物文件名同样是 `luo-mic-release.apk`。
 没有这个文件时，release 也会用 debug 签名，方便你自己装机测试。
 
 ## 3. 手机端权限

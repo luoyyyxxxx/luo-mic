@@ -131,7 +131,7 @@ python luomic_gui.py
 ```bat
 cd android
 gradlew.bat assembleDebug
-:: 产物 app\build\outputs\apk\debug\luo-mic-debug-1.0.0.apk
+:: 产物 app\build\outputs\apk\debug\luo-mic-debug.apk
 ```
 
 > `gradlew.bat` / `gradlew` 是自举脚本：仓库不放二进制 wrapper jar，
@@ -140,6 +140,39 @@ gradlew.bat assembleDebug
 
 ---
 
+
+## ⚡ 最快上手：已经编译好的程序
+
+`windows/build/luo-mic.jar` 是**已经编译好并验证过**的电脑端程序（Java 8 字节码，
+Java 8/11/17/21 都能直接运行）。只要电脑装了 Java：
+
+```bat
+双击 windows\build\luo-mic.jar
+```
+
+没装 Java 就双击 `windows\tools\start-luo-mic.bat`，它会自动下载便携版 JDK 再启动。
+
+---
+
+## 🎤 让它像 WO Mic 一样出现在麦克风列表里
+
+**先说清原理**：Windows 只允许内核级驱动注册"麦克风"设备。WO Mic 开箱即用是因为它自带驱动；
+本项目用免费的 **VB-CABLE** 驱动达到同样效果 —— 装完后微信/QQ/Discord 的麦克风列表里
+会多出 `CABLE Output`，选它，对方听到的就是你手机麦克风的声音。
+
+程序里已经把这套流程做成**一键**：
+
+1. 运行 luo mic → 点左下角 **「安装虚拟声卡」** → 它会自动从 vb-audio.com 下载驱动包并安装（弹 UAC 点"是"）
+2. **重启电脑**（驱动需要）
+3. 「播放到」选 **CABLE Input (VB-Audio Virtual Cable)**
+4. 微信/QQ/Discord 里的麦克风选 **CABLE Output (VB-Audio Virtual Cable)**
+
+详细图文步骤 + 常见问题见 `docs/虚拟麦克风设置.md`。
+
+> 不想装驱动也能用：直接选扬声器/耳机，手机变成电脑的无线扩音器（只是任何软件都拿不到麦克风输入，
+> 这是 Windows 的限制，不是实现问题）。
+
+---
 
 ## 变成“电脑麦克风”（在微信 / QQ / 游戏 / 直播里用）
 

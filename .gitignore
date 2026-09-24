@@ -6,6 +6,8 @@ android/keystore.properties
 *.apk
 *.jar
 !android/gradle/wrapper/gradle-wrapper.jar
+# 例外：预编译好的电脑端程序（几十 KB，让用户不用装 JDK 也能直接双击运行）
+!windows/build/luo-mic.jar
 
 # IDE
 .idea/

@@ -354,41 +354,160 @@ public class MainWindow extends JFrame implements Server.Listener {
             log("虚拟声卡安装仅支持 Windows。");
             return;
         }
+        // 1) 先用用户放进 tools 目录的安装包
         File installer = Win.findVbCableInstaller();
         if (installer == null) {
-            showVirtualMicHelp();
-            return;
+            // 2) 没有就自动从官方下载（VB-Audio 官网直链）
+            int r = JOptionPane.showConfirmDialog(this,
+                    "本机还没有 VB-CABLE 虚拟声卡。\n\n"
+                            + "需要从 VB-Audio 官网下载驱动包（约 1MB）并安装，装完要重启电脑。\n"
+                            + "这样微信/QQ/游戏里的麦克风就能选到手机的声音（和 WO Mic 效果一样）。\n\n"
+                            + "现在自动下载并安装？",
+                    "安装虚拟声卡", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (r != JOptionPane.OK_OPTION) {
+                return;
+            }
+            log("正在从 vb-audio.com 下载 VB-CABLE 驱动包（约 1MB，请稍候）…");
+            File dir = Win.downloadVbCable(null);
+            if (dir == null) {
+                log("自动下载失败。请手动到 https://vb-audio.com/Cable/ 下载，"
+                        + "把 VBCABLE_Setup_x64.exe 放进 windows\\tools\\ 后再点这个按钮。");
+                openUri("https://vb-audio.com/Cable/");
+                return;
+            }
+            installer = Win.findVbCableInstaller();
+            if (installer == null) {
+                File[] exes = dir.listFiles((d, n) -> n.toLowerCase().endsWith(".exe"));
+                if (exes != null && exes.length > 0) {
+                    installer = exes[0];
+                }
+            }
+            if (installer == null) {
+                log("下载完成但没找到安装程序，请手动运行 " + dir.getAbsolutePath());
+                return;
+            }
+            log("已下载：" + installer.getName());
+        } else {
+            int r = JOptionPane.showConfirmDialog(this,
+                    "将静默安装 VB-CABLE 虚拟声卡（来源：VB-Audio，安装后需要重启电脑）。\n\n安装包："
+                            + installer.getName() + "\n\n继续？",
+                    "安装虚拟声卡", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
+            if (r != JOptionPane.OK_OPTION) {
+                return;
+            }
         }
-        int r = JOptionPane.showConfirmDialog(this,
-                "将静默安装 VB-CABLE 虚拟声卡（来源：VB-Audio，安装后需要重启电脑）。\n\n安装包：" + installer.getName()
-                        + "\n\n继续？",
-                "安装虚拟声卡", JOptionPane.OK_CANCEL_OPTION, JOptionPane.QUESTION_MESSAGE);
-        if (r != JOptionPane.OK_OPTION) {
-            return;
-        }
-        log("正在安装 VB-CABLE：" + installer.getAbsolutePath());
+
+        log("正在安装 VB-CABLE（会弹出 UAC，请选“是”）…");
         boolean ok = Win.installVbCable(installer);
-        log(ok ? "安装命令已执行，请重启电脑，然后在上方设备列表中选择“CABLE Input”。"
-                : "安装失败或被取消。");
+        if (ok) {
+            log("安装命令已执行。请【重启电脑】，然后：");
+            log("  1) “播放到”选择 CABLE Input (VB-Audio Virtual Cable)");
+            log("  2) 微信/QQ/游戏里的麦克风选择 CABLE Output (VB-Audio Virtual Cable)");
+            JOptionPane.showMessageDialog(this,
+                    "安装完成！\n\n请重启电脑（驱动需要重启才生效）。\n"
+                            + "重启后打开本程序：\n"
+                            + "  · “播放到”选 CABLE Input (VB-Audio Virtual Cable)\n"
+                            + "  · 微信/QQ/Discord 里的麦克风选 CABLE Output (VB-Audio Virtual Cable)\n\n"
+                            + "这样对方听到的就是手机麦克风的声音 —— 和 WO Mic 效果一样。",
+                    "安装完成", JOptionPane.INFORMATION_MESSAGE);
+        } else {
+            log("安装失败或被取消（UAC 被拒绝？）。可手动右键以管理员身份运行："
+                    + installer.getAbsolutePath());
+        }
     }
 
     private void showVirtualMicHelp() {
-        String msg = "让电脑里的其它软件（微信 / QQ / Discord / 游戏 / 直播）把手机当麦克风：\n\n"
-                + "1) 安装虚拟声卡 VB-CABLE（点左下角“安装虚拟声卡”，或到官网 vb-audio.com/Cable 下载）；\n"
-                + "2) 重启电脑；\n"
-                + "3) 本程序“播放到”选择 CABLE Input (VB-Audio Virtual Cable)；\n"
-                + "4) 在目标软件里把“麦克风”设为 CABLE Output (VB-Audio Virtual Cable)。\n\n"
-                + "想同时自己听到声音：Windows 声音设置 → 录制 → CABLE Output → 属性 → 侦听 → 勾选“侦听此设备”。\n\n"
-                + "没装虚拟声卡也能用：直接选扬声器/耳机，手机声音会从电脑音箱放出来。";
-        JTextArea area = new JTextArea(msg);
+        // 先检测本机有没有虚拟声卡，据此给出不同的话术
+        String virtualName = null;
+        for (AudioPlayer.Device d : AudioPlayer.listDevices()) {
+            if (AudioPlayer.looksVirtual(d.name)) {
+                virtualName = d.name;
+                break;
+            }
+        }
+
+        JTextArea area = new JTextArea(virtualMicHelpText(virtualName));
         area.setEditable(false);
         area.setLineWrap(true);
         area.setWrapStyleWord(true);
         area.setBackground(CARD);
         area.setForeground(TEXT);
         area.setBorder(new EmptyBorder(10, 10, 10, 10));
-        area.setSize(460, 320);
-        JOptionPane.showMessageDialog(this, area, "虚拟声卡帮助", JOptionPane.INFORMATION_MESSAGE);
+        area.setSize(520, 360);
+
+        Object[] options;
+        if (virtualName == null) {
+            options = new Object[]{"去下载 VB-CABLE", "我装好了，再检测一次", "关闭"};
+        } else {
+            options = new Object[]{"打开 Windows 麦克风设置", "再检测一次", "关闭"};
+        }
+        int r = JOptionPane.showOptionDialog(this, area,
+                virtualName == null ? "还没有虚拟声卡" : "虚拟声卡已就绪",
+                JOptionPane.DEFAULT_OPTION, JOptionPane.INFORMATION_MESSAGE, null, options, options[0]);
+
+        if (r == 0) {
+            if (virtualName == null) {
+                openUri("https://vb-audio.com/Cable/");
+                log("已打开 VB-CABLE 下载页。下载解压后把 VBCABLE_Setup_x64.exe 放进 windows\\tools\\，"
+                        + "点界面上的“安装虚拟声卡”即可（装完要重启电脑）。");
+            } else {
+                openMicSettings();
+                log("已打开 Windows 麦克风设置。在微信/QQ/Discord 里把麦克风选成 CABLE Output 就能用了。");
+            }
+        } else if (r == 1) {
+            refreshDevices();
+            boolean found = false;
+            for (AudioPlayer.Device d : AudioPlayer.listDevices()) {
+                if (AudioPlayer.looksVirtual(d.name)) {
+                    found = true;
+                    log("检测到虚拟声卡：" + d.name + " —— 请把它选为“播放到”，然后点“启动服务”。");
+                    break;
+                }
+            }
+            if (!found) {
+                log("仍然没有检测到虚拟声卡。如果你刚装完，请先重启电脑（驱动需要重启才生效）。");
+            }
+        }
+    }
+
+    /** 组装帮助文案（按是否已装虚拟声卡给不同内容）。 */
+    private String virtualMicHelpText(String virtualName) {
+        if (virtualName != null) {
+            return "本机已检测到虚拟声卡：\n   " + virtualName + "\n\n"
+                    + "想要 WO Mic 那种效果（麦克风列表里直接多一个设备选）：\n\n"
+                    + "1) 上面「播放到」选 CABLE Input (VB-Audio Virtual Cable)\n"
+                    + "2) 点「启动服务」，手机连上后点手机上的「开始」\n"
+                    + "3) 在微信 / QQ / Discord / 游戏里，把「麦克风」选成\n"
+                    + "   CABLE Output (VB-Audio Virtual Cable)\n\n"
+                    + "这样对方听到的就是手机麦克风的声音 —— 和 WO Mic 效果一样。\n\n"
+                    + "想让自己也听到（监听）：\n"
+                    + "   Windows 声音设置 → 录制 → CABLE Output → 属性 → 侦听 → 勾选「侦听此设备」";
+        }
+        return "想要 WO Mic 那种效果（麦克风列表里直接多一个设备），需要一块虚拟声卡。\n\n"
+                + "为什么必须装驱动：Windows 只允许内核级驱动注册「麦克风」设备，\n"
+                + "WO Mic 之所以开箱即用，是因为它自带驱动。本程序用免费的 VB-CABLE 达到同样效果。\n\n"
+                + "三步搞定（只需做一次）：\n"
+                + "1) 点下面「去下载 VB-CABLE」→ 官网下 VB-CABLE 驱动包并解压\n"
+                + "2) 把 VBCABLE_Setup_x64.exe 放到 windows\\tools\\ 目录，\n"
+                + "   点本程序左下角「安装虚拟声卡」（会自动提权、静默安装）\n"
+                + "3) 重启电脑 → 回来「播放到」选 CABLE Input → 目标软件麦克风选 CABLE Output\n\n"
+                + "不想装驱动也能用：直接选扬声器/耳机，手机就变成电脑的无线扩音器（只是不能当麦克风输入）。";
+    }
+
+    /** 打开 Windows「声音 → 录制」设置页，方便直接选麦克风。 */
+    private void openMicSettings() {
+        // 优先用 ms-settings URI 直接跳到声音设置
+        try {
+            java.awt.Desktop.getDesktop().browse(new URI("ms-settings:sound"));
+            return;
+        } catch (Exception ignored) {
+            // 回退到控制面板的录音设备
+        }
+        try {
+            Win.runPlain(new String[]{"control", "mmsys.cpl", ",1"});
+        } catch (Exception e) {
+            log("打不开声音设置，请手动：Win+R 输入  mmsys.cpl  回车 → 录制 标签页");
+        }
     }
 
     /* ================= 定时刷新 ================= */

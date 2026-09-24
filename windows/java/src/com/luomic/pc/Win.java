@@ -137,7 +137,95 @@ public final class Win {
 
     /* ================= VB-CABLE 虚拟声卡 ================= */
 
-    /** 在 tools 目录里寻找 VB-CABLE 安装包。 */
+    /** VB-CABLE 官方驱动包直链（VB-Audio 官网免费软件，安装包不随本程序分发）。 */
+    public static final String VBCABLE_URL =
+            "https://download.vb-audio.com/Download_CABLE/VBCABLE_Driver_Pack43.zip";
+
+    /**
+     * 从 VB-Audio 官网下载 VB-CABLE 驱动包并解压，返回解压目录。
+     *
+     * <p>只下载官方原始压缩包，不修改、不重新分发；解压后由调用方提权安装。
+     *
+     * @param progress 进度回调，可为 {@code null}
+     * @return 解压目录（里面有 VBCABLE_Setup_x64.exe），失败返回 {@code null}
+     */
+    public static File downloadVbCable(java.util.function.Consumer<String> progress) {
+        File dir = new File(System.getProperty("java.io.tmpdir"), "luomic-vbcable");
+        File setup = new File(dir, "VBCABLE_Setup_x64.exe");
+        if (setup.isFile()) {
+            // 已经下过就直接复用
+            return dir;
+        }
+        File zip = new File(dir, "VBCABLE_Driver_Pack.zip");
+        try {
+            if (!dir.isDirectory() && !dir.mkdirs()) {
+                return null;
+            }
+            if (progress != null) {
+                progress.accept("正在从官网下载 VB-CABLE 驱动（约 1MB）…");
+            }
+            java.net.URLConnection conn = new java.net.URL(VBCABLE_URL).openConnection();
+            conn.setConnectTimeout(15000);
+            conn.setReadTimeout(60000);
+            conn.setRequestProperty("User-Agent", "luo-mic/1.0");
+            try (java.io.InputStream in = conn.getInputStream();
+                 java.io.FileOutputStream fos = new java.io.FileOutputStream(zip)) {
+                byte[] buf = new byte[8192];
+                int n;
+                long total = 0;
+                while ((n = in.read(buf)) > 0) {
+                    fos.write(buf, 0, n);
+                    total += n;
+                }
+                if (progress != null) {
+                    progress.accept("下载完成（" + (total / 1024) + " KB），正在解压…");
+                }
+            }
+            unzip(zip, dir);
+            zip.delete();
+            if (!setup.isFile()) {
+                // 有些版本的压缩包里文件名大小写不同，兜底找一下
+                File[] found = dir.listFiles((d, name) -> name.toLowerCase().endsWith(".exe"));
+                if (found != null && found.length > 0) {
+                    setup = found[0];
+                }
+            }
+            return setup.isFile() ? dir : null;
+        } catch (Exception e) {
+            if (progress != null) {
+                progress.accept("下载失败：" + e.getMessage());
+            }
+            return null;
+        }
+    }
+
+    /** 极简 zip 解压（只用 JDK 自带 API）。 */
+    private static void unzip(File zip, File targetDir) throws IOException {
+        try (java.util.zip.ZipInputStream zis =
+                     new java.util.zip.ZipInputStream(new java.io.FileInputStream(zip))) {
+            java.util.zip.ZipEntry entry;
+            byte[] buf = new byte[8192];
+            while ((entry = zis.getNextEntry()) != null) {
+                File out = new File(targetDir, entry.getName());
+                if (entry.isDirectory()) {
+                    out.mkdirs();
+                    continue;
+                }
+                File parent = out.getParentFile();
+                if (parent != null && !parent.isDirectory()) {
+                    parent.mkdirs();
+                }
+                try (java.io.FileOutputStream fos = new java.io.FileOutputStream(out)) {
+                    int n;
+                    while ((n = zis.read(buf)) > 0) {
+                        fos.write(buf, 0, n);
+                    }
+                }
+            }
+        }
+    }
+
+    /** 在 tools 目录里寻找 VB-CABLE 安装包（用户自己放进去的情况）。 */
     public static File findVbCableInstaller() {
         List<File> dirs = new ArrayList<>();
         String self = selfPath();
@@ -238,9 +326,17 @@ public final class Win {
             ProcessBuilder pb = new ProcessBuilder(cmd);
             pb.redirectErrorStream(true);
             Process p = pb.start();
-            byte[] out = p.getInputStream().readAllBytes();
+            // 注意：这里不用 InputStream.readAllBytes()（Java 9+ 才有），
+            // 手写缓冲循环以保证在 Java 8 上也能正常运行
+            java.io.InputStream in = p.getInputStream();
+            java.io.ByteArrayOutputStream bos = new java.io.ByteArrayOutputStream(4096);
+            byte[] buf = new byte[4096];
+            int n;
+            while ((n = in.read(buf)) > 0) {
+                bos.write(buf, 0, n);
+            }
             p.waitFor();
-            return new String(out, java.nio.charset.StandardCharsets.UTF_8);
+            return new String(bos.toByteArray(), java.nio.charset.StandardCharsets.UTF_8);
         } catch (IOException | InterruptedException e) {
             if (e instanceof InterruptedException) {
                 Thread.currentThread().interrupt();
