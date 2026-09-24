@@ -9,6 +9,8 @@ import android.content.Context;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.content.pm.ServiceInfo;
+import android.media.AudioFocusRequest;
+import android.media.AudioManager;
 import android.net.wifi.WifiManager;
 import android.os.Build;
 import android.os.IBinder;
@@ -110,6 +112,8 @@ public class MicService extends Service implements Discovery.Listener {
     private NotificationManager notifManager;
     private WifiManager.WifiLock wifiLock;
     private PowerManager.WakeLock wakeLock;
+    private AudioManager audioManager;
+    private Object audioFocusRequest;   // API 26+ 用 AudioFocusRequest，老版本为 null
 
     private volatile int rate = 48000;
     private volatile int frameMs = 20;
@@ -285,7 +289,86 @@ public class MicService extends Service implements Discovery.Listener {
         }
     }
 
+    /**
+     * 申请音频焦点。
+     *
+     * <p>为什么要做：如果别的 App 正在放音乐/录音/接电话，而我们只管采集，
+     * 采到的可能是被系统压低或截断的音频，表现为"电脑那边声音断断续续"，
+     * 但日志里看不出任何异常。申请焦点后系统会明确通知我们被抢占了。
+     */
+    private void acquireAudioFocus() {
+        try {
+            audioManager = (AudioManager) getSystemService(Context.AUDIO_SERVICE);
+            if (audioManager == null) {
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 26) {
+                AudioFocusRequest req = new AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                        // 不在播放，只是采集，所以不申请 AUDIOFOCUS_GAIN_TRANSIENT 之类的强占用
+                        .setWillPauseWhenDucked(true)
+                        .setOnAudioFocusChangeListener(this::onAudioFocusChange)
+                        .build();
+                audioFocusRequest = req;
+                int r = audioManager.requestAudioFocus(req);
+                Log.i(TAG, "音频焦点申请结果：" + r);
+            } else {
+                int r = audioManager.requestAudioFocus(
+                        this::onAudioFocusChange,
+                        AudioManager.STREAM_VOICE_CALL,
+                        AudioManager.AUDIOFOCUS_GAIN);
+                Log.i(TAG, "音频焦点申请结果（旧 API）：" + r);
+            }
+        } catch (Exception e) {
+            Log.w(TAG, "音频焦点申请失败（不影响使用）：" + e.getMessage());
+        }
+    }
+
+    /** 别的 App 抢走/归还音频焦点时，通知界面并（必要时）暂停采集。 */
+    private void onAudioFocusChange(int focusChange) {
+        switch (focusChange) {
+            case AudioManager.AUDIOFOCUS_LOSS:
+            case AudioManager.AUDIOFOCUS_LOSS_TRANSIENT:
+                Log.w(TAG, "麦克风被其他应用占用，暂停采集");
+                // 采集线程会被系统自动静音，这里主动停掉，避免把静音数据推给电脑
+                stopCapture();
+                setPhase("retry", "麦克风被其他应用（通话/录音）占用，已暂停，稍后自动恢复");
+                break;
+            case AudioManager.AUDIOFOCUS_GAIN:
+                Log.i(TAG, "音频焦点已归还，恢复采集");
+                if (state.connected && !state.streaming) {
+                    try {
+                        startCaptureIfNeeded();
+                        setPhase("streaming", "正在把麦克风发送给 " + state.serverName);
+                    } catch (Exception e) {
+                        Log.w(TAG, "恢复采集失败：" + e.getMessage());
+                    }
+                }
+                break;
+            default:
+                // AUDIOFOCUS_LOSS_TRANSIENT_CAN_DUCK 等情况：继续采集即可
+                Log.i(TAG, "音频焦点变化：" + focusChange + "（继续采集）");
+                break;
+        }
+    }
+
+    private void releaseAudioFocus() {
+        try {
+            if (audioManager == null) {
+                return;
+            }
+            if (Build.VERSION.SDK_INT >= 26 && audioFocusRequest instanceof AudioFocusRequest) {
+                audioManager.abandonAudioFocusRequest((AudioFocusRequest) audioFocusRequest);
+            } else {
+                audioManager.abandonAudioFocus(this::onAudioFocusChange);
+            }
+        } catch (Exception e) {
+            Log.d(TAG, "释放音频焦点失败：" + e.getMessage());
+        }
+        audioFocusRequest = null;
+    }
+
     private void acquireLocks() {
+        acquireAudioFocus();
         try {
             WifiManager wifi = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
             if (wifi != null) {
@@ -309,6 +392,7 @@ public class MicService extends Service implements Discovery.Listener {
     }
 
     private void releaseLocks() {
+        releaseAudioFocus();
         if (wifiLock != null && wifiLock.isHeld()) {
             try {
                 wifiLock.release();

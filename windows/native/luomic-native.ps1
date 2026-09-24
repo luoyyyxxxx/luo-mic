@@ -30,6 +30,18 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# ── 强制启用 TLS 1.2 ────────────────────────────────────────────────
+# Windows PowerShell 5.1 默认只启用 TLS 1.0，而现在的下载服务器
+# （api.adoptium.net / dl.google.com / 各镜像站）都强制要求 TLS 1.2+，
+# 不设置的话所有 Invoke-WebRequest 都会失败（报"基础连接已关闭"之类）。
+try {
+    [Net.ServicePointManager]::SecurityProtocol = `
+        [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11
+} catch {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+}
+
+
 $here = Split-Path -Parent $MyInvocation.MyCommand.Path
 . (Join-Path $here 'luomic-protocol.ps1')
 . (Join-Path $here 'luomic-audio.ps1')

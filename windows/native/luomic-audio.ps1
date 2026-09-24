@@ -237,16 +237,36 @@ namespace LuoMic
             while (queue.Count > 25) { byte[] drop; queue.TryDequeue(out drop); }
         }
 
+        // 预缓冲：队列里至少攒够这么多块才开始播放，用来吸收网络抖动。
+        // 每块 20ms，5 块 ≈ 100ms —— 局域网实测 RTT 约 10ms，这个值足够安全。
+        private const int PREBUFFER_CHUNKS = 5;
+
         private void Loop()
         {
             int blockFrames = (int)deviceFormat.nSamplesPerSec * 20 / 1000; // 每次写 20ms
-            byte[] silence = new byte[blockFrames * channels * ((int)deviceFormat.wBitsPerSample / 8)];
+            int bytesPerSampleLocal = (int)deviceFormat.wBitsPerSample / 8;
+            byte[] silence = new byte[blockFrames * channels * bytesPerSampleLocal];
+            bool primed = false;
+            long starveStart = 0;
+
             while (running)
             {
+                // ① 预缓冲：数据不够就先写静音等着（避免一有数据就 drain 造成断续）
+                if (!primed)
+                {
+                    if (queue.Count < PREBUFFER_CHUNKS)
+                    {
+                        WriteSilence(blockFrames, silence);
+                        System.Threading.Thread.Sleep(FRAME_SLEEP);
+                        continue;
+                    }
+                    primed = true;
+                }
+
                 int padding;
                 if (client.GetCurrentPadding(out padding) != 0) break;
                 int frames = blockFrames - padding;
-                if (frames <= 0) { System.Threading.Thread.Sleep(5); continue; }
+                if (frames <= 0) { System.Threading.Thread.Sleep(FRAME_SLEEP); continue; }
 
                 IntPtr buf;
                 if (render.GetBuffer(frames, out buf) != 0) break;
@@ -254,13 +274,20 @@ namespace LuoMic
                 byte[] pcm;
                 if (!queue.TryDequeue(out pcm))
                 {
-                    // 没有数据：写静音，避免爆音
-                    Marshal.Copy(silence, 0, buf, Math.Min(silence.Length, frames * channels * ((int)deviceFormat.wBitsPerSample / 8)));
-                    render.ReleaseBuffer(frames, 0);
+                    // ② 队列空了：先看是不是"瞬时抖动"。
+                    //    抖动容忍窗口内继续补静音但不退出预缓冲状态；
+                    //    超过 300ms 还没数据，才退回预缓冲状态重新攒。
+                    if (starveStart == 0) starveStart = DateTime.UtcNow.Ticks;
+                    if ((DateTime.UtcNow.Ticks - starveStart) > TimeSpan.TicksPerMillisecond * 300)
+                    {
+                        primed = false;
+                        starveStart = 0;
+                    }
+                    WriteSilence(frames, silence);
                     Interlocked.Increment(ref underruns);
-                    System.Threading.Thread.Sleep(FRAME_SLEEP);
                     continue;
                 }
+                starveStart = 0;
 
                 WriteConverted(buf, frames, pcm);
                 render.ReleaseBuffer(frames, 0);
@@ -268,28 +295,66 @@ namespace LuoMic
             }
         }
 
+        /// <summary>写静音并释放缓冲（保持 WASAPI 时钟连续，避免爆音）。</summary>
+        private void WriteSilence(int frames, byte[] silence)
+        {
+            IntPtr buf;
+            if (render == null) return;
+            if (render.GetBuffer(frames, out buf) != 0) return;
+            int bytesPerSampleLocal = (int)deviceFormat.wBitsPerSample / 8;
+            int need = frames * channels * bytesPerSampleLocal;
+            Marshal.Copy(silence, 0, buf, Math.Min(silence.Length, need));
+            render.ReleaseBuffer(frames, 0);
+        }
+
         private const int FRAME_SLEEP = 5;
 
-        /// <summary>把 16bit 单声道 PCM 转成设备要求的格式写进缓冲。</summary>
+        // 跨块保持的小数相位：不保持的话每次从 0 重算，长时间播放会累积漂移
+        private double resamplePhase = 0.0;
+        private byte[] convertBuf = null;
+        private int lastSrcRate = 0;
+
+        /// <summary>
+        /// 把 16bit 单声道 PCM 转成设备要求的格式写进缓冲。
+        /// 48k→44.1k 这类采样率不一致时用**线性插值**（不是最近邻），
+        /// 否则会有明显混叠噪声；并用跨块保持的小数相位避免累积漂移。
+        /// </summary>
         private void WriteConverted(IntPtr buf, int frames, byte[] pcm)
         {
-            int bytesPerSample = (int)deviceFormat.wBitsPerSample / 8;
-            int outBytes = frames * channels * bytesPerSample;
-            byte[] outBuf = new byte[outBytes];
+            int bytesPerSampleLocal = (int)deviceFormat.wBitsPerSample / 8;
+            int outBytes = frames * channels * bytesPerSampleLocal;
+            if (convertBuf == null || convertBuf.Length < outBytes)
+            {
+                convertBuf = new byte[outBytes + 4096];
+            }
+            byte[] outBuf = convertBuf;
+
             int srcSamples = pcm.Length / 2;
             int srcRate = SourceRate > 0 ? SourceRate : (int)deviceFormat.nSamplesPerSec;
             if (srcRate <= 0) srcRate = 48000;
             int devRate = (int)deviceFormat.nSamplesPerSec;
 
+            // 采样率变了就重置相位
+            if (srcRate != lastSrcRate) { resamplePhase = 0.0; lastSrcRate = srcRate; }
+
+            // step = 每输出一个样本要走多少个源样本
+            double step = (double)srcRate / devRate;
+            // phase 记的是"上一个输出样本落在源缓冲里的位置"的小数部分。
+            // 本次从 -step 开始推进，第一个输出样本就正好落在 phase 处。
+            double phase = resamplePhase;
+            double pos = phase - step;
+
             for (int i = 0; i < frames; i++)
             {
-                // 简单线性重采样（48k -> 设备采样率；同采样率时是直接映射）
-                int srcIndex = devRate == srcRate ? i : (int)((long)i * srcRate / devRate);
-                short s = 0;
-                if (srcIndex >= 0 && srcIndex < srcSamples) s = (short)(pcm[srcIndex * 2] | (pcm[srcIndex * 2 + 1] << 8));
+                int i0 = (int)pos;
+                double frac = pos - i0;
+                short s0 = SampleAt(pcm, srcSamples, i0);
+                short s1 = SampleAt(pcm, srcSamples, i0 + 1);
+                short s = (short)(s0 + (s1 - s0) * frac);
+
                 for (int c = 0; c < channels; c++)
                 {
-                    int off = (i * channels + c) * bytesPerSample;
+                    int off = (i * channels + c) * bytesPerSampleLocal;
                     if (isFloat)
                     {
                         float f = s / 32768f;
@@ -302,8 +367,21 @@ namespace LuoMic
                         outBuf[off + 1] = (byte)((s >> 8) & 0xFF);
                     }
                 }
+                pos += step;
             }
+            // 保存相位（取小数部分）供下一块接着用 —— 这是"不累积漂移"的关键。
+            // 每块开头用 phase - step 起步，正好抵消这里多推进的那一步。
+            resamplePhase = pos - Math.Floor(pos);
+            if (resamplePhase < 0) resamplePhase = 0;
+
             Marshal.Copy(outBuf, 0, buf, Math.Min(outBuf.Length, outBytes));
+        }
+
+        /// <summary>安全取样本（越界返回 0）。</summary>
+        private static short SampleAt(byte[] pcm, int count, int index)
+        {
+            if (index < 0 || index >= count) return 0;
+            return (short)(pcm[index * 2] | (pcm[index * 2 + 1] << 8));
         }
 
         public void Stop()

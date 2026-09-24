@@ -19,6 +19,18 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
+# ── 强制启用 TLS 1.2 ────────────────────────────────────────────────
+# Windows PowerShell 5.1 默认只启用 TLS 1.0，而现在的下载服务器
+# （api.adoptium.net / dl.google.com / 各镜像站）都强制要求 TLS 1.2+，
+# 不设置的话所有 Invoke-WebRequest 都会失败（报"基础连接已关闭"之类）。
+try {
+    [Net.ServicePointManager]::SecurityProtocol = `
+        [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11
+} catch {
+    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
+}
+
+
 function Say($msg, $color = 'Gray') { Write-Host $msg -ForegroundColor $color }
 function Head($msg) { Write-Host ''; Write-Host "=== $msg ===" -ForegroundColor Cyan }
 function Fail($msg) {
@@ -57,6 +69,16 @@ Say '====================================================' Cyan
 if (-not (Test-Path $AndDir)) { Fail "找不到安卓工程目录：$AndDir" }
 
 # 路径里如果有中文/空格，Android 的 aapt2 可能报错，提前提醒
+# Windows 传统路径上限 260 字符；SDK/JDK 都在 %LOCALAPPDATA%\luo-mic 下，
+# 如果再叠加中文长路径，解压时可能报"路径太长"。
+if ($RootDir.Length -gt 90) {
+    Say ''
+    Say "  [提醒] 你的项目路径比较长（$($RootDir.Length) 字符）：" Yellow
+    Say "         $RootDir" Yellow
+    Say '         Windows 默认路径上限 260 字符，编译中间产物路径更深，可能解压失败。' Yellow
+    Say '         建议移到 C:\luo-mic 这类短路径再试。' Yellow
+}
+
 if ($RootDir -match '[^\x00-\x7F]') {
     Say ''
     Say "  [提醒] 你的项目路径包含中文或特殊字符：" Yellow
@@ -250,6 +272,23 @@ if (-not (Test-Path $GradleBin)) {
         }
     }
     if (-not $ok) { Fail 'Gradle 下载失败，请检查网络（或挂代理）后重试。' }
+
+    # 校验下载完整性：记录首次成功下载的 SHA256，之后每次都比对。
+    # 作用：① 缓存文件损坏能立刻发现 ② 镜像站内容变动能发现。
+    # 说明：首次下载无法比对（没有可信基准），只做记录；这是诚实的局限。
+    $shaFile = Join-Path $GradleCache "gradle-$GradleVer-bin.zip.sha256"
+    $actual = (Get-FileHash -Path $gzip -Algorithm SHA256).Hash
+    $expected = if (Test-Path $shaFile) { (Get-Content $shaFile -Raw).Trim() } else { $null }
+    if ($expected -and ($actual -ne $expected)) {
+        Remove-Item -Force $gzip -ErrorAction SilentlyContinue
+        Fail "Gradle 压缩包校验失败！`n  期望 SHA256: $expected`n  实际 SHA256: $actual`n可能原因：下载中断、或镜像站内容被改动。已删除损坏文件，请重新运行。"
+    }
+    if (-not $expected) {
+        $actual | Set-Content -Path $shaFile -Encoding ASCII
+        Step "已记录 Gradle 包指纹（SHA256 前 16 位：$($actual.Substring(0,16))…）"
+    } else {
+        Step 'Gradle 包完整性校验通过'
+    }
 
     Step '解压 Gradle'
     $tmp = Join-Path $GradleCache 'tmp'
