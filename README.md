@@ -141,6 +141,35 @@ gradlew.bat assembleDebug
 ---
 
 
+## 🥇 推荐：Windows 原生版（不需要 Java，对虚拟声卡支持最好）
+
+`windows\native\` 是**用 Windows 自己的音频 API（WASAPI）写的电脑端**。
+如果你的 Windows 上装了 Java 版却听不到声音、或者双击 jar 报错，**直接用它**。
+
+```bat
+双击 windows\tools\start-luo-mic-native.bat
+```
+
+它会自动：
+- 列出所有播放设备，**优先选中 VB-CABLE 虚拟声卡**（这样就是"手机当麦克风"的效果）
+- 监听局域网等待手机连接，连上后自动开始接收
+- 实时显示码率、帧数、电平
+
+其它用法：
+
+```bat
+start-luo-mic-native.bat -ListDevices        :: 只列出音频设备
+start-luo-mic-native.bat -Device "CABLE"     :: 指定输出设备（支持部分匹配）
+start-luo-mic-native.bat -NoAutoStart        :: 手机连上后不自动推流
+windows\tools\诊断-音频设备.bat              :: 排查"没声音"
+windows\tools\诊断-系统声音设备.bat          :: 用 Windows 自带命令看设备状态
+```
+
+> 协议与 Java 版、安卓端完全一致（见 `docs/PROTOCOL.md`），可以混用。
+> 网络部分（`luomic-protocol.ps1`）已做过端到端验证：假手机推流 400 帧 / 50fps / 768kbps 全部正确接收。
+
+---
+
 ## ⚡ 最快上手：已经编译好的程序
 
 `windows/build/luo-mic.jar` 是**已经编译好并验证过**的电脑端程序（Java 8 字节码，
