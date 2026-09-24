@@ -64,9 +64,15 @@ push_repo() { # $1=目录 $2=owner/repo
     && git remote set-url origin "https://x-access-token:${TOKEN}@github.com/${slug}.git" \
     || git remote add origin "https://x-access-token:${TOKEN}@github.com/${slug}.git"
   # 网络不稳时重试 3 次（这台机器到 GitHub 偶发 TLS 中断）
-  local rc=1 attempt
+  # 注意：不能用 `git push | tail` 的退出码判断成败（那是 tail 的退出码），
+  #      所以先把输出抓下来，再用文本标记判断；"Everything up-to-date" 也算成功。
+  local out rc=1 attempt
   for attempt in 1 2 3; do
-    if git push -u origin main 2>&1 | mask | tail -3; then rc=0; break; fi
+    out="$(git push -u origin main 2>&1)"
+    printf '%s\n' "$out" | mask | tail -3
+    if printf '%s' "$out" | grep -qE 'Everything up-to-date|main -> main|new branch|new tag|\* \[new branch\]'; then
+      rc=0; break
+    fi
     [ "$attempt" = "3" ] || { echo "  第 $attempt 次推送失败，5 秒后重试…"; sleep 5; }
   done
   # 立刻把令牌从远端地址里清掉
