@@ -141,6 +141,17 @@ gradlew.bat assembleDebug
 ---
 
 
+## ⚠️ 两个电脑端不要同时开
+
+Java 版和原生版**都用 47777/47778/47779 这三个端口**。
+同时启动的话，第二个会直接报「地址已在使用 / Address already in use」，手机也会连错。
+
+**只选一个用**：
+- 卡在 Java 版本或听不到声音 → 用**原生版**（`start-luo-mic-native.bat`）
+- 一切正常 → 用 **Java 版**（`luo-mic.jar`，界面更完整）
+
+---
+
 ## 🥇 推荐：Windows 原生版（不需要 Java，对虚拟声卡支持最好）
 
 `windows\native\` 是**用 Windows 自己的音频 API（WASAPI）写的电脑端**。

@@ -83,15 +83,16 @@ androidComponents {
     onVariants { variant ->
         val buildType = variant.buildType ?: "release"
         variant.outputs.forEach { output ->
+            // AGP 8.x 的做法：getOutputFileName() 返回一个 Property<String>，
+            // 改它即可。注意没有 setOutputFileName 方法（实测确认过），
+            // 所以不能靠 setter 反射 —— 那是上一版失效的原因。
             try {
-                val m = output.javaClass.methods.firstOrNull {
-                    it.name == "setOutputFileName" && it.parameterTypes.size == 1
-                }
-                m?.invoke(output, "luo-mic-$buildType.apk")
+                val prop = output.javaClass.getMethod("getOutputFileName").invoke(output)
+                prop.javaClass.getMethod("set", Any::class.java).invoke(prop, "luo-mic-$buildType.apk")
             } catch (e: Exception) {
-                // 改不了就用系统默认名字（app-debug.apk），不影响能装上手机
-                logger.lifecycle("luo mic: 未重命名 APK（${e.javaClass.simpleName}），使用默认文件名")
+                logger.lifecycle("luo mic: 未能重命名 APK（${e.javaClass.simpleName}），用默认文件名")
             }
         }
     }
 }
+
