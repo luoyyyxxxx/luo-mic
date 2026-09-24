@@ -210,11 +210,3 @@ python windows\python\luomic_gui.py --list-devices
 三端共用 `docs/PROTOCOL.md`：UDP 47777 发现（电脑 2 秒周期广播 + 应答探测）、
 TCP 47778 控制（行分隔 JSON）、TCP 47779 音频（4 字节大端长度前缀 + PCM）。
 改动任何一端都必须同步另外两端。
-
----
-
-## 开源协议
-
-[MIT](LICENSE) © 2026 愈落 (luoyyyxxxx)
-
-随手写的小工具，欢迎自取、修改；如果能帮到你，给个 star 就很开心了。
