@@ -1,0 +1,62 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.luomic.app-debug-4:/values_values.arsc.flat",
+            "map": [
+                {
+                    "source": "/home/luoy/dsh/luo-mic/android/app/src/main/res/values/strings.xml",
+                    "from": {
+                        "startLines": "2,6,4,3,5",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "55,265,153,100,212",
+                        "endColumns": "44,48,58,52,52",
+                        "endOffsets": "95,309,207,148,260"
+                    },
+                    "to": {
+                        "startLines": "11,12,13,14,15",
+                        "startColumns": "4,4,4,4,4",
+                        "startOffsets": "461,506,555,614,667",
+                        "endColumns": "44,48,58,52,52",
+                        "endOffsets": "501,550,609,662,715"
+                    }
+                },
+                {
+                    "source": "/home/luoy/dsh/luo-mic/android/app/src/main/res/values/themes.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "9",
+                        "endColumns": "12",
+                        "endOffsets": "547"
+                    },
+                    "to": {
+                        "startLines": "16",
+                        "startColumns": "4",
+                        "startOffsets": "720",
+                        "endLines": "23",
+                        "endColumns": "12",
+                        "endOffsets": "1212"
+                    }
+                },
+                {
+                    "source": "/home/luoy/dsh/luo-mic/android/app/src/main/res/values/colors.xml",
+                    "from": {
+                        "startLines": "5,6,2,3,4,10,8,9,7",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "183,226,55,94,135,417,317,366,273",
+                        "endColumns": "42,46,38,40,47,43,48,50,43",
+                        "endOffsets": "221,268,89,130,178,456,361,412,312"
+                    },
+                    "to": {
+                        "startLines": "2,3,4,5,6,7,8,9,10",
+                        "startColumns": "4,4,4,4,4,4,4,4,4",
+                        "startOffsets": "55,98,145,184,225,273,317,366,417",
+                        "endColumns": "42,46,38,40,47,43,48,50,43",
+                        "endOffsets": "93,140,179,220,268,312,361,412,456"
+                    }
+                }
+            ]
+        }
+    ]
+}

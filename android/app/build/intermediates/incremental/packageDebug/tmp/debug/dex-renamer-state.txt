@@ -1,0 +1,7 @@
+#Thu Sep 24 15:02:20 CST 2026
+base.1=/home/luoy/dsh/luo-mic/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/9/classes.dex
+path.1=9/classes.dex
+base.0=/home/luoy/dsh/luo-mic/android/app/build/intermediates/dex/debug/mergeProjectDexDebug/0/classes.dex
+renamed.1=classes2.dex
+renamed.0=classes.dex
+path.0=0/classes.dex

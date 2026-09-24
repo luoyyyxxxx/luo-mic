@@ -1,0 +1,7 @@
+com.luomic.app-pngs-0 /home/luoy/dsh/luo-mic/android/app/build/generated/res/pngs/debug
+com.luomic.app-resValues-1 /home/luoy/dsh/luo-mic/android/app/build/generated/res/resValues/debug
+com.luomic.app-packageDebugResources-2 /home/luoy/dsh/luo-mic/android/app/build/intermediates/incremental/debug/packageDebugResources/merged.dir
+com.luomic.app-packageDebugResources-3 /home/luoy/dsh/luo-mic/android/app/build/intermediates/incremental/debug/packageDebugResources/stripped.dir
+com.luomic.app-debug-4 /home/luoy/dsh/luo-mic/android/app/build/intermediates/merged_res/debug/mergeDebugResources
+com.luomic.app-debug-5 /home/luoy/dsh/luo-mic/android/app/src/debug/res
+com.luomic.app-main-6 /home/luoy/dsh/luo-mic/android/app/src/main/res

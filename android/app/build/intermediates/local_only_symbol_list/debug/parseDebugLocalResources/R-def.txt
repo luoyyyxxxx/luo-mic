@@ -1,0 +1,31 @@
+R_DEF: Internal format may change without notice
+local
+color accent
+color accent_dim
+color bg
+color card
+color card_stroke
+color divider
+color text_primary
+color text_secondary
+color warning
+drawable bg_status
+drawable ic_mic
+id addrText
+id btnRescan
+id btnSettings
+id btnToggle
+id dot
+id levelBar
+id statText
+id statusDetail
+id statusTitle
+layout activity_main
+mipmap ic_launcher
+string app_name
+string notif_action_stop
+string notif_channel_desc
+string notif_channel_name
+string notif_title
+style Theme.LuoMic
+xml data_extraction_rules

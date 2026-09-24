@@ -4,6 +4,8 @@
 android/local.properties
 android/keystore.properties
 *.apk
+# 例外：编译好的安卓安装包（41KB，别人可直接下载安装，不用自己编译）
+!luo-mic.apk
 
 # 忽略所有 jar，但保留两个例外：
 #   · android/gradle/wrapper 里的 wrapper（如有）
