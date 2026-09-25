@@ -1,5 +1,6 @@
 @echo off
-rem 用 Windows 原生方式列出所有播放设备（含虚拟声卡），排查"听不到声音"用
+rem  List every audio playback device (incl. virtual cables) - for "no sound"
+rem  ASCII-only on purpose: see the note in firewall.bat
 chcp 65001 >nul
 setlocal
 set "PS=powershell"

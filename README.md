@@ -18,6 +18,27 @@
 
 ---
 
+## ⬇️ 直接下载（推荐，不用装 Java）
+
+到 [Releases](../../releases) 下载 **`luo-mic-1.0.0-win64.exe`**（约 21 MB）：
+
+- **自带 Java 运行时**，目标电脑不用装任何东西，双击即用
+- 首次运行自动解压内置运行时到 `%LOCALAPPDATA%\luo-mic\`（约 1 秒）
+- 手机端装同页的 `luo-mic.apk`
+
+```
+luo-mic-1.0.0-win64.exe --list-devices    :: 列出播放设备（排查"没声音"）
+luo-mic-1.0.0-win64.exe --install         :: 放行防火墙 + 开机自启
+luo-mic-1.0.0-win64.exe --uninstall       :: 撤销设置
+```
+
+> 没有购买商业代码签名证书，Windows 可能提示「已保护你的电脑」——
+> 点「更多信息」→「仍要运行」。可用 `SHA256SUMS.txt` 校验文件。
+
+想自己改代码重新打包 exe，见 [`build/`](build/)（需要 JDK 17+）。
+
+---
+
 ## 🚀 完全不会用命令行？照这个做（两次双击）
 
 ### 第 1 步：电脑端（双击一次）
@@ -99,11 +120,43 @@ luo-mic/
 │       ├── install-vbcable.bat  一键安装虚拟声卡（管理员，可选）
 │       ├── build-windows.bat    只用 JDK 命令行编译（进阶）
 │       └── run.bat              编译并运行（进阶）
+├── packaging/                   ★ 打包成「单文件免 Java exe」
+│   ├── build-exe.ps1            一条命令走完 javac→jar→jpackage→csc
+│   ├── Launcher.cs              自解压启动器（把运行时嵌进 exe）
+│   ├── AssemblyInfo.cs          exe 的版本 / 公司等元数据
+│   ├── make-icon.ps1            生成多尺寸图标 luo-mic.ico
+│   ├── luo-mic.ico              应用图标
+│   └── verify-exe.ps1           验证 exe（无 Java 环境、全新解压）
 └── tools/java/                  测试工具
     └── com/luomic/test/
         ├── SelfTest.java        一键自检（无需手机、无需声卡）
         ├── PhoneSim.java        假手机模拟器（Java 版）
         └── HeadlessServer.java  无界面服务端（排查用）
+```
+
+---
+
+## 打包成单文件 exe（发布用）
+
+目标电脑**不需要装 Java**：exe 里嵌了一个精简过的 Java 运行时（21 MB）。
+
+```powershell
+# 需要 JDK 17+（带 jpackage/jlink），会自动寻找
+powershell -ExecutionPolicy Bypass -File packaging\build-exe.ps1
+
+# 产物：dist\release\luo-mic-1.0.0-win64.exe
+```
+
+流水线：`javac` 编译 → `jar` 打包 → `jpackage` 生成含精简运行时的
+app-image → 压缩为内嵌载荷 → `csc` 编译自解压启动器。
+
+首次运行解压到 `%LOCALAPPDATA%\luo-mic\app\<版本>\`，之后直接复用，
+所以开机自启与防火墙规则指向的是稳定路径。
+
+验证（会临时清掉 JAVA_HOME/PATH，确认真的不依赖系统 Java）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File packaging\verify-exe.ps1
 ```
 
 ---
@@ -140,17 +193,6 @@ gradlew.bat assembleDebug
 
 ---
 
-
-## ⚠️ 两个电脑端不要同时开
-
-Java 版和原生版**都用 47777/47778/47779 这三个端口**。
-同时启动的话，第二个会直接报「地址已在使用 / Address already in use」，手机也会连错。
-
-**只选一个用**：
-- 卡在 Java 版本或听不到声音 → 用**原生版**（`start-luo-mic-native.bat`）
-- 一切正常 → 用 **Java 版**（`luo-mic.jar`，界面更完整）
-
----
 
 ## 🥇 推荐：Windows 原生版（不需要 Java，对虚拟声卡支持最好）
 

@@ -1,21 +1,21 @@
 # 构建产物
-/build/
-/.gradle/
-android/.gradle/
-android/build/
-android/app/build/
+build/
+.gradle/
 android/local.properties
 android/keystore.properties
 *.apk
-# 例外：编译好的安卓安装包（41KB，别人可直接下载安装，不用自己编译）
-!luo-mic.apk
-
-# 忽略所有 jar，但保留两个例外：
-#   · android/gradle/wrapper 里的 wrapper（如有）
-#   · windows/build/luo-mic.jar —— 预编译好的电脑端程序，让用户不用装 JDK 就能双击运行
 *.jar
 !android/gradle/wrapper/gradle-wrapper.jar
+# 例外：预编译好的电脑端程序（几十 KB，让用户不用装 JDK 也能直接双击运行）
 !windows/build/luo-mic.jar
+
+# 打包成 exe 的输出（约 21MB，走 GitHub Releases，不进仓库）
+dist/
+*.exe
+*.zip
+*.sha256
+# 注意：packaging/ 里是打包脚本本身，要提交
+!packaging/
 
 # IDE
 .idea/

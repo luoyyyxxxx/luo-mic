@@ -16,18 +16,6 @@ param(
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 
-# ── 强制启用 TLS 1.2 ────────────────────────────────────────────────
-# Windows PowerShell 5.1 默认只启用 TLS 1.0，而现在的下载服务器
-# （api.adoptium.net / dl.google.com / 各镜像站）都强制要求 TLS 1.2+，
-# 不设置的话所有 Invoke-WebRequest 都会失败（报"基础连接已关闭"之类）。
-try {
-    [Net.ServicePointManager]::SecurityProtocol = `
-        [Net.SecurityProtocolType]::Tls12 -bor [Net.SecurityProtocolType]::Tls11
-} catch {
-    try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch { }
-}
-
-
 function Say($msg, $color = 'Gray') { Write-Host $msg -ForegroundColor $color }
 function Head($msg) { Write-Host ''; Write-Host "=== $msg ===" -ForegroundColor Cyan }
 function Fail($msg) {
@@ -68,8 +56,8 @@ function Test-Jdk([string]$candidate) {
     return (Test-Path $jar)
 }
 
-function Get-JdkMajor([string]$home) {
-    $javac = Join-Path $home 'bin\javac.exe'
+function Get-JdkMajor([string]$jdkDir) {
+    $javac = Join-Path $jdkDir 'bin\javac.exe'
     try {
         $out = & $javac -version 2>&1 | Out-String
         if ($out -match 'javac\s+(\d+)') { return [int]$Matches[1] }
@@ -77,20 +65,23 @@ function Get-JdkMajor([string]$home) {
     return 0
 }
 
-Head '1/3  检查 Java'
-
-# 1) JAVA_HOME
-if (Test-Jdk $env:JAVA_HOME) { $JdkHome = $env:JAVA_HOME }
-# 2) PATH 里的 javac
-if (-not $JdkHome) {
+# 按优先级依次探测候选 JDK，返回第一个满足 "javac 主版本 >= 17" 的目录。
+# 关键：不能一找到 JDK 就用它。很多电脑（包括本机）的 JAVA_HOME 指向 Java 8，
+# 若先认下 Java 8，就会既白白重下一次 JDK 17、又拿 Java 8 的 javac 去编译。
+function Find-Jdk17 {
+    $candidates = new-object System.Collections.ArrayList
+    if ($env:JAVA_HOME) { [void]$candidates.Add($env:JAVA_HOME) }
     $cmd = Get-Command javac.exe -ErrorAction SilentlyContinue
     if ($cmd) {
-        $home = Split-Path -Parent (Split-Path -Parent $cmd.Source)
-        if (Test-Jdk $home) { $JdkHome = $home }
+        # 注意：这里不要用 $home —— Windows PowerShell 5.1 里 $HOME 是只读自动变量。
+        [void]$candidates.Add((Split-Path -Parent (Split-Path -Parent $cmd.Source)))
     }
-}
-# 3) 常见安装位置
-if (-not $JdkHome) {
+    # 之前自动下载的便携版 JDK 优先级高于系统安装的
+    if (Test-Path $JdkCache) {
+        foreach ($d in (Get-ChildItem -Path $JdkCache -Directory -ErrorAction SilentlyContinue)) {
+            [void]$candidates.Add($d.FullName)
+        }
+    }
     $roots = @(
         "$env:ProgramFiles\Java", "$env:ProgramFiles\Eclipse Adoptium",
         "$env:ProgramFiles\Microsoft\jdk", "$env:ProgramFiles\Amazon Corretto",
@@ -99,28 +90,30 @@ if (-not $JdkHome) {
     )
     foreach ($r in $roots) {
         if (-not (Test-Path $r)) { continue }
-        $found = Get-ChildItem -Path $r -Directory -ErrorAction SilentlyContinue |
-                 Where-Object { Test-Jdk $_.FullName } |
-                 Sort-Object Name -Descending | Select-Object -First 1
-        if ($found) { $JdkHome = $found.FullName; break }
+        foreach ($d in (Get-ChildItem -Path $r -Directory -ErrorAction SilentlyContinue)) {
+            [void]$candidates.Add($d.FullName)
+        }
     }
-}
-# 4) 之前自动下载的 JDK
-if (-not $JdkHome -and (Test-Path $JdkCache)) {
-    $found = Get-ChildItem -Path $JdkCache -Directory -ErrorAction SilentlyContinue |
-             Where-Object { Test-Jdk $_.FullName } | Select-Object -First 1
-    if ($found) { $JdkHome = $found.FullName }
+    foreach ($c in $candidates) {
+        if (Test-Jdk $c) {
+            $m = Get-JdkMajor $c
+            if ($m -ge 17) { return $c }
+        }
+    }
+    return $null
 }
 
-$major = if ($JdkHome) { Get-JdkMajor $JdkHome } else { 0 }
-if ($JdkHome -and $major -ge 17) {
+Head '1/3  检查 Java'
+
+$JdkHome  = Find-Jdk17
+$JdkFound = $JdkHome            # 系统上找到的可用 JDK（可能为 $null），用于后面决定要不要下载
+$major    = 0
+if ($JdkHome) { $major = Get-JdkMajor $JdkHome }
+
+if ($JdkHome) {
     Say "  找到 Java $major ：$JdkHome" Green
 } else {
-    if ($JdkHome) {
-        Say "  找到的 Java 版本是 $major，低于 17，需要重新下载一个（不会动你现有的 Java）。" Yellow
-    } else {
-        Say '  这台电脑没找到 JDK，将自动下载一个便携版 JDK 17（约 180MB，只下一次）。' Yellow
-    }
+    Say '  这台电脑没找到 JDK 17+，将自动下载一个便携版 JDK 17（约 180MB，只下一次）。' Yellow
     Say '  正在下载 OpenJDK 17 ...' Cyan
     if (-not (Test-Path $JdkCache)) { New-Item -ItemType Directory -Path $JdkCache -Force | Out-Null }
     try {
@@ -161,10 +154,11 @@ Say "  共 $($sources.Count) 个源文件"
 if ($Force -and (Test-Path $BuildDir)) { Remove-Item -Recurse -Force $BuildDir }
 if (-not (Test-Path $ClassDir)) { New-Item -ItemType Directory -Path $ClassDir -Force | Out-Null }
 
-$listFile = Join-Path $BuildDir 'sources.txt'
-$sources | Set-Content -Path $listFile -Encoding UTF8
-
-$javacOut = & $Javac -encoding UTF-8 -nowarn -d $ClassDir "@$listFile" 2>&1 | Out-String
+# 直接把源文件作为参数交给 javac。
+# 这里刻意不使用 @argfile：javac 读 argfile 时用的是平台默认编码（本机 GBK），
+# 而源文件路径里含中文（如 E:\新建文件夹 (5)\...），UTF-8 的 argfile 会直接抛
+# MalformedInputException 并以退出码 3 中止。直接传参不受任何编码影响。
+$javacOut = & $Javac -encoding UTF-8 -nowarn -d $ClassDir $sources 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0) {
     Write-Host $javacOut -ForegroundColor Red
     Fail "编译失败。请把上面的红色信息发给我。`n（如果你的 Java 版本低于 17，先删掉 $JdkCache 再重新运行本脚本。）"
@@ -182,9 +176,8 @@ if (Test-Path $TestDir) {
     if (-not (Test-Path $TestClassDir)) { New-Item -ItemType Directory -Path $TestClassDir -Force | Out-Null }
     $testSources = Get-ChildItem -Path $TestDir -Recurse -Filter *.java | ForEach-Object { $_.FullName }
     if ($testSources) {
-        $tlist = Join-Path $BuildDir 'test-sources.txt'
-        $testSources | Set-Content -Path $tlist -Encoding UTF8
-        & $Javac -encoding UTF-8 -nowarn -cp $ClassDir -d $TestClassDir "@$tlist" 2>&1 | Out-Null
+        # 同样不用 @argfile，原因见上面主编译处的注释。
+        & $Javac -encoding UTF-8 -nowarn -cp $ClassDir -d $TestClassDir $testSources 2>&1 | Out-Null
         if ($LASTEXITCODE -eq 0) { $haveTests = $true }
     }
 }

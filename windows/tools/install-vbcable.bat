@@ -1,28 +1,30 @@
 @echo off
+rem  luo mic - install the VB-CABLE virtual audio driver
+rem  ASCII-only on purpose: see the note in firewall.bat
 chcp 65001 >nul
-title luo mic - 安装 VB-CABLE 虚拟声卡
+title luo mic - install VB-CABLE
 setlocal
 set "PKG="
 for %%F in ("%~dp0VBCABLE_Setup*.exe" "%~dp0vbcable*.exe" "%~dp0VBCABLE*.exe") do if exist "%%~F" set "PKG=%%~F"
 if "%PKG%"=="" (
-    echo [提示] 在 %~dp0 下没有找到 VB-CABLE 安装包。
+    echo [luo mic] VB-CABLE installer not found in:
+    echo     %~dp0
     echo.
-    echo 请到官网下载后放到本目录（文件名以 VBCABLE 开头）：
-    echo     https://vb-audio.com/Cable/
-    echo.
-    echo 下载的是压缩包，解压后把 VBCABLE_Setup_x64.exe 放进 %~dp0 再运行本脚本。
+    echo Download it from https://vb-audio.com/Cable/ , unzip, and put
+    echo VBCABLE_Setup_x64.exe into that folder, then run this again.
     echo.
     pause
     exit /b 1
 )
-echo 找到安装包：%PKG%
+echo Found installer: %PKG%
 net session >nul 2>&1
 if errorlevel 1 (
+    echo [luo mic] Administrator rights required, elevating...
     powershell -NoProfile -Command "Start-Process -FilePath '%~f0' -Verb RunAs"
     exit /b
 )
-echo 正在静默安装 VB-CABLE...
+echo Installing VB-CABLE silently...
 "%PKG%" -i -h
 echo.
-echo 安装完成，请【重启电脑】，然后在 luo mic 里把“播放到”选择 CABLE Input。
+echo Done. REBOOT Windows, then set "Play to" to CABLE Input in luo mic.
 pause

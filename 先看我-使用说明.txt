@@ -1,0 +1,93 @@
+========================================
+ luo mic —— U 盘内容说明
+========================================
+
+这个 U 盘里装的是 luo mic（把安卓手机变成 Windows 电脑的无线麦克风）
+和它的全部源码。插到 Windows 电脑上就能用。
+
+
+一、目录里有什么
+----------------------------------------
+luo-mic\                     完整项目
+  ├─ README.md               总说明（先看这个）
+  ├─ docs\                   通信协议、安卓端构建说明
+  ├─ android\                安卓端源码（Java）
+  ├─ windows\
+  │   ├─ build\luo-mic.jar   ★ 电脑端程序（已编译好，可直接运行）
+  │   ├─ java\               电脑端 Java 源码
+  │   ├─ python\             电脑端 Python 版（备选）
+  │   └─ tools\              ★ 一键脚本都在这
+  │       ├─ start-luo-mic.bat   双击：编译并打开电脑端
+  │       ├─ build-apk.bat       双击：自动打包安卓 APK
+  │       └─ firewall.bat        双击：放行防火墙（管理员）
+  ├─ tools\java\             自检工具（不用手机就能验证）
+  └─ push.sh                 推送更新到 GitHub（Linux 用）
+
+
+二、在 Windows 电脑上怎么用
+----------------------------------------
+【最简单】windows\build\luo-mic.jar 是已经编译好的，装了 Java 就能双击运行
+          （Java 8 / 11 / 17 / 21 都可以）
+
+1. 装 Java（如果还没有）
+   到 https://adoptium.net/ 下载 JDK 17 装好。
+   （只运行程序的话装 JRE 也行，但要自己编译就得 JDK）
+
+2. 启动电脑端
+   直接双击 windows\build\luo-mic.jar
+   或者双击 windows\tools\start-luo-mic.bat（会自动编译最新版再启动）
+
+   窗口出来后：
+     · 点右下角「放行防火墙」，UAC 弹窗选「是」
+     · 「播放到」选你的耳机 / 音箱
+     · 点「启动服务」，状态变成"等待手机连接…"
+
+3. 装手机端
+   双击 windows\tools\build-apk.bat
+   等它下载 Android SDK（首次 10~30 分钟），完成后会把
+   luo-mic.apk 放到你的桌面，传到手机安装即可。
+
+
+三、想验证功能是否正常（不用手机、不用声卡）
+----------------------------------------
+1. 双击 windows\tools\start-luo-mic.bat（会编译出带自检工具的版本）
+2. 打开命令行，cd 到 luo-mic\windows 目录，执行：
+      java -cp "build\classes;build\test-classes" com.luomic.test.SelfTest 8
+   看到「结论：通过」就说明电脑端一切正常，
+   此时如果手机连不上，问题在网络 / 防火墙 / 路由器，不在程序。
+
+
+四、让微信 / QQ / 游戏把手机当麦克风（WO Mic 那种效果）
+----------------------------------------
+★ 详细说明见同一目录下的 docs\虚拟麦克风设置.md
+
+原理：Windows 只允许内核级驱动注册"麦克风"设备。WO Mic 自带驱动所以开箱即用；
+      本程序用免费的 VB-CABLE 驱动达到同样效果 —— 装完后微信/QQ/Discord 的
+      麦克风列表里会多出 CABLE Output，选它即可。
+
+程序已做成一键：直接点 luo mic 界面左下角「安装虚拟声卡」，
+它会自动从官网下载驱动并安装（弹 UAC 点"是"），装完重启电脑。
+
+手动方式（自动下载失败时）：
+1. 到 https://vb-audio.com/Cable/ 下载，解压后把 VBCABLE_Setup_x64.exe
+   放到 windows\tools\ 目录
+2. 双击 windows\tools\install-vbcable.bat（管理员权限）
+3. 重启电脑
+4. luo mic 里「播放到」改成 CABLE Input
+5. 微信/QQ/Discord 里的麦克风改成 CABLE Output
+
+不想装驱动也能用：直接选扬声器/耳机，手机就变成电脑的无线扩音器。
+
+
+五、以后更新
+----------------------------------------
+· 网站：https://killed-frp.top        （项目介绍：/projects.html）
+· 源码：https://github.com/luoyyyxxxx/luo-mic
+· 改完源码想更新仓库：在 Linux 上执行  bash push.sh "提交说明"
+  （凭据已在 ~/.config/luoy-mic/github-token，不用每次给令牌）
+· 改完网站想更新：在 site-v3 目录执行  bash deploy.sh
+
+
+========================================
+luo mic v1.0.0 · 愈落 (luoyyyxxxx) · MIT 协议
+========================================
