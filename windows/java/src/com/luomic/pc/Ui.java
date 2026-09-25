@@ -8,6 +8,7 @@ import java.awt.Font;
 import java.awt.FontMetrics;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
+import java.awt.GraphicsEnvironment;
 import java.awt.RenderingHints;
 import java.awt.Component;
 import java.awt.Container;
@@ -63,8 +64,57 @@ public final class Ui {
     /** 分隔线。 */
     public static final Color DIVIDER = new Color(0xEFEEE9);
 
-    private static final String SANS = "Segoe UI";
-    private static final String MONO = "Consolas";
+    /*
+     * 字体：必须自己挑一个"能显示中文"的。
+     *
+     * 原来写死 Segoe UI / Consolas —— 这两个字体不含中文字形，
+     * 界面里所有中文都会渲染成方块（豆腐块）。
+     * 这里改成运行时从系统里挑：按偏好顺序取第一个"真的能显示中文"
+     * 的字体，找不到就退回 Java 逻辑字体（逻辑字体自带 CJK 回退，不会出方块）。
+     */
+    public static final String SANS;
+    public static final String MONO;
+
+    static {
+        java.util.Set<String> available = new java.util.HashSet<>();
+        try {
+            for (String n : GraphicsEnvironment.getLocalGraphicsEnvironment()
+                    .getAvailableFontFamilyNames()) {
+                available.add(n);
+            }
+        } catch (Throwable ignored) {
+            // 取不到列表就退回逻辑字体
+        }
+
+        // 偏好顺序：先中英文都好看的，再纯中文的
+        String[] prefer = {
+            "Microsoft YaHei UI", "Microsoft YaHei", "微软雅黑",
+            "Noto Sans SC", "Source Han Sans SC", "思源黑体",
+            "PingFang SC", "Microsoft JhengHei UI"
+        };
+        String picked = null;
+        for (String name : prefer) {
+            if (available.contains(name)) {
+                picked = name;
+                break;
+            }
+        }
+        if (picked == null) {
+            // 以上都没有：在系统里找一个能显示"手机麦"三个字的
+            for (String name : available) {
+                Font f = new Font(name, Font.PLAIN, 12);
+                if (f.canDisplay('手') && f.canDisplay('机') && f.canDisplay('麦')) {
+                    picked = name;
+                    break;
+                }
+            }
+        }
+        SANS = (picked != null) ? picked : Font.SANS_SERIF;
+
+        // 等宽字体只用于码率/帧数这类数字，但要保证它也能显示中文（设备名里有中文）
+        Font m = new Font("Consolas", Font.PLAIN, 12);
+        MONO = m.canDisplay('音') ? "Consolas" : SANS;
+    }
 
     public static Font sans(int size) {
         return new Font(SANS, Font.PLAIN, size);

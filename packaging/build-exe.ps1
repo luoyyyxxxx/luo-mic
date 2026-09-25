@@ -175,6 +175,25 @@ Say ''
 Say '=== 5/5  build the single-file launcher ==='
 $ExeName = "luo-mic-$Version-win64.exe"
 $Exe = Join-Path $Work $ExeName
+
+# Launcher.cs keeps the app version behind a token. Without this substitution the
+# launcher would always extract to the same directory, so a rebuilt exe would
+# silently keep running the *old* extracted payload.
+$LauncherSrc = Join-Path $Work 'Launcher.cs'
+$launcherText = Get-Content -LiteralPath (Join-Path $Assets 'Launcher.cs') -Raw
+if ($launcherText -notmatch '@APPVERSION@') {
+    Fail 'Launcher.cs is missing the @APPVERSION@ token.'
+}
+$launcherText = $launcherText.Replace('@APPVERSION@', $Version)
+[System.IO.File]::WriteAllText($LauncherSrc, $launcherText, (New-Object System.Text.UTF8Encoding($false)))
+
+# Same for the assembly metadata (shows up in the file's Properties dialog).
+$AsmInfoSrc = Join-Path $Work 'AssemblyInfo.cs'
+$asmText = Get-Content -LiteralPath (Join-Path $Assets 'AssemblyInfo.cs') -Raw
+$asmText = $asmText.Replace('@APPVERSION@', $Version)
+[System.IO.File]::WriteAllText($AsmInfoSrc, $asmText, (New-Object System.Text.UTF8Encoding($false)))
+Say ("  launcher embeds app version " + $Version)
+
 $cscArgs = @(
     '/nologo', '/target:exe', '/platform:x64', '/optimize+',
     "/out:$Exe",
@@ -182,10 +201,7 @@ $cscArgs = @(
     '/reference:System.IO.Compression.dll,System.IO.Compression.FileSystem.dll'
 )
 if (Test-Path $Icon) { $cscArgs += "/win32icon:$Icon" }
-$cscArgs += @(
-    (Join-Path $Assets 'AssemblyInfo.cs'),
-    (Join-Path $Assets 'Launcher.cs')
-)
+$cscArgs += @($AsmInfoSrc, $LauncherSrc)
 & $Csc @cscArgs 2>&1 | Out-String
 if ($LASTEXITCODE -ne 0 -or -not (Test-Path $Exe)) { Fail 'csc failed.' }
 Say ("  " + $ExeName + "  " + [math]::Round((Get-Item $Exe).Length / 1MB, 1) + " MB") Green

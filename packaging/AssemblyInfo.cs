@@ -8,6 +8,6 @@ using System.Runtime.InteropServices;
 [assembly: AssemblyCompany("luoyyyxxxx")]
 [assembly: AssemblyProduct("luo mic")]
 [assembly: AssemblyCopyright("Copyright (c) 2026 luoyyyxxxx - MIT License")]
-[assembly: AssemblyVersion("1.0.0.0")]
-[assembly: AssemblyFileVersion("1.0.0.0")]
+[assembly: AssemblyVersion("@APPVERSION@.0")]
+[assembly: AssemblyFileVersion("@APPVERSION@.0")]
 [assembly: ComVisible(false)]

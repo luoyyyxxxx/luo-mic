@@ -17,7 +17,9 @@ using System.Text;
 
 internal static class Launcher
 {
-    private const string AppVersion = "1.0.0";
+    // build-exe.ps1 substitutes the real version into this token before compiling,
+    // so a new version never reuses an older version's extracted directory.
+    private const string AppVersion = "@APPVERSION@";
     private const string AppExe = "luo mic.exe";
     private const string ConsoleExe = "luo-mic-console.exe";
 
